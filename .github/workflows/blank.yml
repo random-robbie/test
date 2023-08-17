@@ -1,0 +1,38 @@
+name: Enrich CVE Details
+
+on: [push]
+
+jobs:
+
+  enrich:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - uses: actions/checkout@v2
+    
+    - name: Check if CVE ID exists
+      id: check
+      run: |
+        if grep -q 'cve-id:' "${{ github.workspace }}/template.yaml"; then
+          echo "::set-output name=exists::true"
+        else 
+          echo "::set-output name=exists::false"
+        fi
+
+    - name: Get CVE details
+      if: ${{ steps.check.outputs.exists == 'true' }}
+      run: |
+        cve=$(grep -o 'CVE-\d+-\d+' "${{ github.workspace }}/template.yaml" | head -n 1)
+        details=$(curl -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/CVEProject/cvelist/contents/${cve}.json)
+        echo "::set-output name=details::$details"
+      id: cve
+
+    - name: Add CVE details
+      if: ${{ steps.check.outputs.exists == 'true' }}
+      run: |
+        details="${{ steps.cve.outputs.details }}"
+        yaml=$(echo "$details" | jq -r '.content | @base64d | fromjson')
+        yaml="$yaml" jq --argjson add "$yaml" '.metadata += $add' template.yaml > template_new.yaml
+        mv template_new.yaml template.yaml
