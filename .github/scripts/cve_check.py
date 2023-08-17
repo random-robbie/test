@@ -62,6 +62,5 @@ for root, dirs, files in os.walk(base_dir):
                 print(modified_str)
             with open(file_path, 'w') as file:
                 file.write(modified_str)
-            print("Updated "+file+"")
 
         
