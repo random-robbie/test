@@ -20,11 +20,13 @@ jobs:
     - name: Get CVE details
       if: ${{ steps.check.outputs.exists != '0' }}
       run: |
+
         cve=${{ steps.check.outputs.cve }}
         details=$(curl https://cve.circl.lu/api/cve/$cve)
 
-        # Extract CVSS 
+        # Extract and format CVSS
         cvss=$(echo "$details" | jq -r '.cvss')
+        cvss=${cvss//.}
         
         # Extract references
         declare -a refs
