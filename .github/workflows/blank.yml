@@ -22,38 +22,35 @@ jobs:
       run: |
         cve=${{ steps.check.outputs.cve }}
         details=$(curl https://cve.circl.lu/api/cve/$cve)
-        
-        # Extract CVSS and references
+
+        # Extract CVSS 
         cvss=$(echo "$details" | jq -r '.cvss')
-        references=$(echo "$details" | jq -r '.references[]')
         
+        # Extract references
+        declare -a refs
+        while read -r line; do
+          refs+=("$line")
+        done < <(echo "$details" | jq -r '.references[]')
+
         echo "::set-output name=cvss::$cvss"
-        echo "::set-output name=references::$references"
-    
+        echo "::set-output name=references::${refs[*]}"
+
       id: cve
 
     - name: Add CVE details
       if: ${{ steps.check.outputs.exists != '0' }}
       run: |
       
-        details="${{ steps.cve.outputs.details }}"
+        cvss="${{ steps.cve.outputs.cvss }}"  
+        yaml="cvss-score: $cvss"
+        echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "$file" > "${file}_new"
       
-        for file in $(find . -name '*.yaml' ! -name 'blank.yaml'); do
-        
-          # Add CVSS
-          cvss="${{ steps.cve.outputs.cvss }}"
-          yaml="cvss-score: $cvss"
-          echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "$file" > "${file}_new"
-        
-          # Add references  
-          refs="${{ steps.cve.outputs.references }}"
-          for ref in $refs; do
-            yaml="references:
-                  - $ref"
-            echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "${file}_new" > "${file}_tmp"
-            mv "${file}_tmp" "${file}_new"
-          done
-        
-          mv "${file}_new" "$file"
-        
-        done
+        refs="${{ steps.cve.outputs.references }}"
+        for ref in $refs; do
+          yaml="references:
+                - $ref"
+          echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "${file}_new" > "${file}_tmp"
+          mv "${file}_tmp" "${file}_new"
+        done  
+      
+        mv "${file}_new" "$file"
