@@ -16,12 +16,14 @@ jobs:
       id: check
       run: |
         find . -name '*.yaml' ! -name 'blank.yaml' | xargs grep -l 'cve-id:' | wc -l | xargs echo "::set-output name=exists::"
+        echo "::set-output name=cve::$(grep -o 'CVE-[0-9]\{4\}-[0-9]\{4\}' template.yaml | head -1)"
 
     - name: Get CVE details
       if: ${{ steps.check.outputs.exists != '0' }}
       run: |
+        
+        cve=${{ steps.check.outputs.cve }} 
 
-        cve=${{ steps.check.outputs.cve }}
         details=$(curl https://cve.circl.lu/api/cve/$cve)
 
         # Extract and format CVSS
@@ -34,25 +36,37 @@ jobs:
           refs+=("$line")
         done < <(echo "$details" | jq -r '.references[]')
 
+        # Extract CPE
+        cpe=$(echo "$details" | jq -r '.vulnerable_product[]')
+
         echo "::set-output name=cvss::$cvss"
         echo "::set-output name=references::${refs[*]}"
+        echo "::set-output name=cpe::$cpe"
 
       id: cve
 
     - name: Add CVE details
       if: ${{ steps.check.outputs.exists != '0' }}
       run: |
-      
-        cvss="${{ steps.cve.outputs.cvss }}"  
-        yaml="cvss-score: $cvss"
+
+        cvss="${{ steps.cve.outputs.cvss }}"
+        yaml="cvss-score: $cvss" 
         echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "$file" > "${file}_new"
-      
+
         refs="${{ steps.cve.outputs.references }}"
         for ref in $refs; do
-          yaml="references:
+          yaml="references: 
                 - $ref"
           echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "${file}_new" > "${file}_tmp"
           mv "${file}_tmp" "${file}_new"
-        done  
-      
+        done
+        
+        cpe="${{ steps.cve.outputs.cpe }}"
+        for prod in $cpe; do
+          yaml="cpe:
+            - $prod"
+          echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "${file}_new" > "${file}_tmp"
+          mv "${file}_tmp" "${file}_new"
+        done
+
         mv "${file}_new" "$file"
