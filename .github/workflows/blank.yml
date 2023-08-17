@@ -1,4 +1,4 @@
-name: Enrich CVE Details
+name: Enrich YAML with CVE Details
 
 on: [push]
 
@@ -11,28 +11,27 @@ jobs:
     steps:
 
     - uses: actions/checkout@v2
-    
+
     - name: Check if CVE ID exists
       id: check
       run: |
-        if grep -q 'cve-id:' "${{ github.workspace }}/template.yaml"; then
-          echo "::set-output name=exists::true"
-        else 
-          echo "::set-output name=exists::false"
-        fi
+        find . -name '*.yaml' ! -name 'blank.yaml' | xargs grep -l 'cve-id:' | wc -l | xargs echo "::set-output name=exists::"
 
     - name: Get CVE details
-      if: ${{ steps.check.outputs.exists == 'true' }}
+      if: ${{ steps.check.outputs.exists != '0' }}
       run: |
-        cve=$(grep -o 'CVE-\d+-\d+' "${{ github.workspace }}/template.yaml" | head -n 1)
+        find . -name '*.yaml' ! -name 'blank.yaml' | xargs grep -o 'CVE-\d+-\d+' | head -n 1 | tee /tmp/cveid
+        cve=$(cat /tmp/cveid)
         details=$(curl -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/CVEProject/cvelist/contents/${cve}.json)
         echo "::set-output name=details::$details"
       id: cve
 
     - name: Add CVE details
-      if: ${{ steps.check.outputs.exists == 'true' }}
+      if: ${{ steps.check.outputs.exists != '0' }}
       run: |
         details="${{ steps.cve.outputs.details }}"
-        yaml=$(echo "$details" | jq -r '.content | @base64d | fromjson')
-        yaml="$yaml" jq --argjson add "$yaml" '.metadata += $add' template.yaml > template_new.yaml
-        mv template_new.yaml template.yaml
+        for file in $(find . -name '*.yaml' ! -name 'blank.yaml'); do
+          yaml=$(echo "$details" | jq -r '.content | @base64d | fromjson')
+          yaml="$yaml" jq --argjson add "$yaml" '.metadata += $add' $file > ${file}_new
+          mv ${file}_new $file
+        done
