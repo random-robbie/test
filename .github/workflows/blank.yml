@@ -20,28 +20,39 @@ jobs:
     - name: Get CVE details
       if: ${{ steps.check.outputs.exists != '0' }}
       run: |
-        find . -name '*.yaml' ! -name 'blank.yaml' | xargs grep -o 'CVE-\d+-\d+' | head -n 1 | tee /tmp/cveid
-        cve=$(cat /tmp/cveid)
-        details=$(curl -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/CVEProject/cvelist/contents/${cve}.json)
-        echo "::set-output name=details::$details"
+        cve=${{ steps.check.outputs.cve }}
+        details=$(curl https://cve.circl.lu/api/cve/$cve)
+        
+        # Extract CVSS and references
+        cvss=$(echo "$details" | jq -r '.cvss')
+        references=$(echo "$details" | jq -r '.references[]')
+        
+        echo "::set-output name=cvss::$cvss"
+        echo "::set-output name=references::$references"
+    
       id: cve
 
     - name: Add CVE details
       if: ${{ steps.check.outputs.exists != '0' }}
       run: |
+      
         details="${{ steps.cve.outputs.details }}"
-        
+      
         for file in $(find . -name '*.yaml' ! -name 'blank.yaml'); do
         
-          yaml=$(echo "$details" | jq -r '.content | @base64d | fromjson')
+          # Add CVSS
+          cvss="${{ steps.cve.outputs.cvss }}"
+          yaml="cvss-score: $cvss"
+          echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "$file" > "${file}_new"
         
-          if [ $? -ne 0 ]; then
-            echo "Error parsing JSON: "
-            echo "$details"
-            exit 1
-          fi
-        
-          yaml="$yaml" jq --argjson add "$yaml" '.metadata += $add' "$file" > "${file}_new"
+          # Add references  
+          refs="${{ steps.cve.outputs.references }}"
+          for ref in $refs; do
+            yaml="references:
+                  - $ref"
+            echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "${file}_new" > "${file}_tmp"
+            mv "${file}_tmp" "${file}_new"
+          done
         
           mv "${file}_new" "$file"
         
