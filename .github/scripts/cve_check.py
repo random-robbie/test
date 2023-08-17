@@ -5,6 +5,7 @@ import requests
 import json
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
+base_dir = base.dir.replace("/.github/scripts/","")
 
 for root, dirs, files in os.walk(base_dir):
   if '.github' in dirs:
@@ -59,3 +60,8 @@ for root, dirs, files in os.walk(base_dir):
                 contents = f.read()
                 modified_str = contents.replace("metadata:", "metadata:\n   " + output)
                 print(modified_str)
+            with open(file_path, 'w') as file:
+                file.write(modified_str)
+            print("Updated "+file+"")
+
+        
