@@ -1,72 +1,25 @@
-name: Enrich YAML with CVE Details
+name: CVE Check
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
 
 jobs:
-
-  enrich:
-
+  cve_check:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out code
+        uses: actions/checkout@v2
 
-    - uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
 
-    - name: Check if CVE ID exists
-      id: check
-      run: |
-        find . -name '*.yaml' ! -name 'blank.yaml' | xargs grep -l 'cve-id:' | wc -l | xargs echo "::set-output name=exists::"
-        echo "::set-output name=cve::$(grep -o 'CVE-[0-9]\{4\}-[0-9]\{4\}' template.yaml | head -1)"
+      - name: Install dependencies
+        run: pip install requests pyyaml
 
-    - name: Get CVE details
-      if: ${{ steps.check.outputs.exists != '0' }}
-      run: |
-        
-        cve=${{ steps.check.outputs.cve }} 
-
-        details=$(curl https://cve.circl.lu/api/cve/$cve)
-
-        # Extract and format CVSS
-        cvss=$(echo "$details" | jq -r '.cvss')
-        cvss=${cvss//.}
-        
-        # Extract references
-        declare -a refs
-        while read -r line; do
-          refs+=("$line")
-        done < <(echo "$details" | jq -r '.references[]')
-
-        # Extract CPE
-        cpe=$(echo "$details" | jq -r '.vulnerable_product[]')
-
-        echo "::set-output name=cvss::$cvss"
-        echo "::set-output name=references::${refs[*]}"
-        echo "::set-output name=cpe::$cpe"
-
-      id: cve
-
-    - name: Add CVE details
-      if: ${{ steps.check.outputs.exists != '0' }}
-      run: |
-
-        cvss="${{ steps.cve.outputs.cvss }}"
-        yaml="cvss-score: $cvss" 
-        echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "$file" > "${file}_new"
-
-        refs="${{ steps.cve.outputs.references }}"
-        for ref in $refs; do
-          yaml="references: 
-                - $ref"
-          echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "${file}_new" > "${file}_tmp"
-          mv "${file}_tmp" "${file}_new"
-        done
-        
-        cpe="${{ steps.cve.outputs.cpe }}"
-        for prod in $cpe; do
-          yaml="cpe:
-            - $prod"
-          echo "$yaml" | jq --argjson add "$yaml" '.metadata += $add' "${file}_new" > "${file}_tmp"
-          mv "${file}_tmp" "${file}_new"
-        done
-
-        mv "${file}_new" "$file"
+      - name: Run CVE Check
+        run: python .github/scripts/cve_check.py
