@@ -4,8 +4,8 @@ import yaml
 import requests
 import json
 
-base_dir = os.path.dirname(os.path.abspath(__file__))
-base_dir = base_dir.replace("/.github/scripts/","")
+base_dir = "/home/runner/work/test/"
+
 
 for root, dirs, files in os.walk(base_dir):
   if '.github' in dirs:
