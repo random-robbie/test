@@ -31,7 +31,13 @@ jobs:
       run: |
         details="${{ steps.cve.outputs.details }}"
         for file in $(find . -name '*.yaml' ! -name 'blank.yaml'); do
-          yaml=$(echo "$details" | jq -r '.content | @base64d | fromjson')
-          yaml="$yaml" jq --argjson add "$yaml" '.metadata += $add' $file > ${file}_new
+          try
+            yaml=$(echo "$details" | jq -r '.content | @base64d | fromjson')
+            yaml="$yaml" jq --argjson add "$yaml" '.metadata += $add' $file > ${file}_new
+          catch
+            echo "Error parsing CVE JSON: " 
+            echo "$details"
+            exit 1  
+          end
           mv ${file}_new $file
         done
