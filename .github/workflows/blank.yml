@@ -23,3 +23,10 @@ jobs:
 
       - name: Run CVE Check
         run: python .github/scripts/cve_check.py
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "CVE check results"
