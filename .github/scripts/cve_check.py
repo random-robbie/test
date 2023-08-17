@@ -1,48 +1,61 @@
 import os
-import re
-import requests
+import re  
 import yaml
+import requests
+import json
 
-CVE_API_URL = "https://cve.circl.lu/api/cve"
+base_dir = os.path.dirname(os.path.abspath(__file__))
 
-def fetch_cve_info(cve_id):
-    response = requests.get(f"{CVE_API_URL}/{cve_id}")
-    if response.status_code == 200:
-        return response.json()
-    return None
+for root, dirs, files in os.walk(base_dir):
+  if '.github' in dirs:
+    dirs.remove('.github')
 
-def main():
-    cve_pattern = re.compile(r"CVE-\d{4}-\d{4,7}")
+  for file in files:
+    if file.endswith('.yaml'):
+      file_path = os.path.join(root, file)
 
-    for root, _, files in os.walk("."):
-        for filename in files:
-            if filename != "blank.yaml" and filename.endswith(".yaml"):
-                yaml_path = os.path.join(root, filename)
-                with open(yaml_path, "r") as f:
-                    data = yaml.safe_load(f)
+      with open(file_path) as f:
+        yaml_str = yaml.dump(yaml.safe_load(f)) 
+      if "cve-id" not in yaml_str:
+         cve_search = re.search(r'CVE-\d+-\d+', yaml_str)
 
-                if "metadata" not in data:
-                    data["metadata"] = {}
+         if cve_search:
+            cve_id = cve_search.group()
 
-                if "cpe" not in data["metadata"]:
-                    with open(yaml_path, "r") as f:
-                        yaml_content = f.read()
-                        cve_ids = set(cve_pattern.findall(yaml_content))
+            url = f'https://cve.circl.lu/api/cve/{cve_id}'
+            response = requests.get(url)
+            response_json = json.loads(response.text)
+            output = ""
 
-                    for cve_id in cve_ids:
-                        cve_info = fetch_cve_info(cve_id)
-                        if cve_info:
-                            metadata = {
-                                "cvss-metrics": cve_info.get("cvss-vector", ""),
-                                "cvss-score": cve_info.get("cvss", ""),
-                                "cve-id": cve_id,
-                                "cwe-id": cve_info.get("cwe", ""),
-                                "cpe": cve_info.get("vulnerable_configuration", []),
-                            }
-                            data["metadata"].update(metadata)
+            try:
+                CVSS_SCORE = response_json['cvss']
+                output += " cvss-score: " + str(CVSS_SCORE) + "\n"
+            except:
+                output += " cvss-score:\n"
+                pass
 
-                    with open(yaml_path, "w") as f:
-                        yaml.dump(data, f, default_flow_style=False)
+            try:
+                cvss_vector = response_json['cvss-vector']
+                output += "    cvss-metrics: " + cvss_vector + "\n"
+            except:
+                output += "    cvss-metrics:\n"
+                pass
 
-if __name__ == "__main__":
-    main()
+            try:
+                cwe = response_json['cwe']
+                output += "    cwe-id: " + cwe + "\n"
+            except:
+                output += "    cwe-id:\n"
+                pass
+
+            try:
+                cve_id = response_json['id']
+                output += "    cve-id: " + cve_id + ""
+            except:
+                pass
+            f.close()
+            with open(file_path) as f:
+                # Read the contents of the file
+                contents = f.read()
+                modified_str = contents.replace("metadata:", "metadata:\n   " + output)
+                print(modified_str)
